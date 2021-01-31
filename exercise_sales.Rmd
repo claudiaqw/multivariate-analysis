@@ -1,0 +1,260 @@
+---
+title: "Análisis multivariante en el mercado inmobiliario"
+author: "Claudia Quintana Wong"
+date: "25/1/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introducción
+
+Un conjunto de datos se dice multivariante cuando existen varias variables medidas para cada instancia u objeto estudiado del conjunto. El análisis multivariante permite un mejor entendimiento del fenómeno objeto de estudio obteniendo información que los métodos estadísticos univariantes y bivariantes son incapaces de conseguir.
+
+En este trabajo se llevará a cabó un análisis multivariante sobre el conjunto de datos HomeSalesData.csv que contiene datos de unas 20,000 viviendas, cada una con 21 variables. El objetivo de este trabajo es estudiar la relación existente entre las variables y crear un modelo de manera que, se logre preservar la mayor cantidad de información posible de los datos con una menor cantidad de variables.
+
+## Desarrollo
+
+En esta sección se describe el análisis aplicado sobre el conjunto de datos. Inicialmente, se realiza un análisis descriptivo sobre las variables con el objetivo de obtener un mejor entendimiento de cada una de las variables. Posteriormente se aplican herramientas propias del análisis multivariante como el Análisis de Componentes Principales (PCA, del inglés *Principal Component Analysis*) y Análisis Fatorial (FA, del inglés *Factorial Analysis*).
+
+
+Importamos las bibliotecas que serán utilizadas y cargamos en memoria el conjunto de datos:
+
+```{r message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(GGally)
+library(factoextra)
+
+original_sales = read.csv(file = "HomeSalesData.csv", header=T, sep=",")
+head(original_sales)
+```
+
+Las variables **id** y **name** no son características propias de una casa por tanto no nos aportan información relevante. 
+
+#### 1. Eliminar las variables id y date
+```{r}
+sales <- select(original_sales, -c('id', 'date'))
+head(sales)
+
+```
+
+
+#### 2 Eliminar la variable price, aunque se puede conservar en memoria para interpretar mejor el output de PCA y FA
+
+```{r}
+price <- original_sales[c('id', 'price')]
+sales <- select(sales, -c('price'))
+head(sales)
+
+```
+
+#### 3. Preprocesado y feature engineering
+
+
+#### 4. Análisis descriptivo
+
+```{r}
+glimpse(sales)
+
+```
+
+Comprobamos si hay NAs en los datos ...
+
+```{r}
+sum(is.na(original_sales))
+```
+
+
+```{r}
+summary(sales)
+
+```
+
+Para analizar la existencia de outliers, utilizamos un gráfico de caja y bigote por cada variable del conjunto de datos.
+
+```{r}
+boxplot(sales, las=2, col="darkblue")
+
+```
+En la imagen se puede ver que las variables *sqft_lot* y *sqft_lot15* presentan valores que están fuera del rango intercuartílico, por lo que son valores atípicos.
+
+Estandarizar los valores de las variables para un mejor análisis. Aquí se nota que no solo las variables anteriores tienen valores atípicos.
+
+```{r}
+boxplot(scale(sales), las=2, col="darkblue")
+
+```
+Realizar un análisis de las corelaciones para identificar qué variables están relacionadas entre sí y que posteriormente, pueden estar guardando información redundante.
+
+```{r}
+ggcorr(sales, label = T)
+```
+En el gráfico se puede observar que existen varias variables altamente correlacionadas positivamente. Estas son los pares más significativas:
+
+* *bathrooms, sqft_living*
+
+* *sqft_living, condition*
+* *sqft_living, grade*
+* *sqft_living, sqft_living15*
+
+* *sqft_lot, sqft_lot15*
+
+* *grade, sqft_above*
+* *grade, sqft_living15*
+
+* *sfqt_above, sqft_living15*
+
+En este ejercicio trataremos de explicar la variable price de una casa en función del resto. Vamos a analizar la relación de la variable price respecto al resto de las variables.
+
+```{r}
+library(ggplot2)
+
+for(i in 4:21){
+  plot(original_sales[,i], original_sales$price, type='p', col='blue', xlab = names(original_sales)[i], ylab = 'price' )
+}
+```
+###5. Aplicar herramienta PCA e interpretar
+
+Principal Component Analysis (PCA) es un método estadístico que permite simplificar la complejidad de espacios muestrales con muchas dimensiones a la vez que conserva su información. En este caso, el objetivo de aplicar sería conservar la mayor cantidad de información posible en un menor número de variables.
+
+
+```{r}
+pca = prcomp(sales, scale=T)
+summary(pca)
+
+```
+Con la primera componente solo tenemos explicado alrededor de un 29% de los datos originales, lo cual no es suficiente. Vamos a dibujar las varianzas para determinar cuantas componentes debemos considerar.
+
+El siguiente gráfico representa un gráfico de codo y nos muestra la varianza explicada por cada componente en forma de porcentaje.
+
+```{r}
+fviz_screeplot(pca, addlabels = TRUE)
+
+```
+Aunque el gráfico muestra que la primera componente explica la mayor cantidad de información por sí sola, solo explica un 29% de variabilidad, lo cual no es suficiente. En este caso, el codo no se ve claramente pues las varianzas están distribuidas por el resto de componentes. 
+
+Visualmente se puede notar que a partir de la componente 5 las varianzas disminuyen muy poco, las diferencias comienzan a ser muy pequeñas. La tasa de decrecimiento se hace más pequeña.
+
+Analicemos la primera componente a través de un gráfico de barras, donde cada barra representa el peso de esa variable en la componente.
+
+```{r}
+barplot(pca$rotation[,1], las=2, col="darkblue")
+
+```
+
+El siguiente gráfico muestra la contribución, ya sea positiva o negativa, de cada variable a la primera componente:
+
+```{r}
+fviz_contrib(pca, choice = "var", axes = 1)
+
+```
+Se puede notar que las variables *sqft_living* y *sqft_above* son las que más aportan a la primera componente. Ambas variables están asociadas al tamaño de una vivienda. La variables *bathroom* también tiene una alta contribución y desde cierto punto de vista, tiene relación con el tamaño de una casa. 
+
+Por otra parte, la variable *grade*, la cual representa el índice de construcción y diseño de una casa, está altamente representada en la primera componente. Esta variable presenta una alta correlación (0.9) con *sqft_living*, por lo que se puede inferir que el índice depende del tamaño de una casa. *sfqt_living15* tambén tiene una alta contribución, lo cual, siguiendo la misma línea, puede ser interpretado como que casas de gran tamaño están rodeadas de casas grandes.
+Por esta razón, la primera componente se puede asociar al tamaño de la casa que además es un factor determinante para establecer un precio.
+
+
+Ordenar de acuerdo a la primera componente .. Y vamos a poner el precio a ver si están ordenados también y verificar la relación.
+
+```{r}
+#TODO: names[order(pca$x[,1])][1:10]
+
+```
+
+La contribución de cada instancia del conjunto de datos a la primera componente
+
+```{r}
+
+fviz_contrib(pca, choice = "ind", axes = 1)
+```
+
+Analicemos la segunda componente ...
+
+```{r}
+barplot(pca$rotation[,2], las=2, col="darkblue")
+
+```
+
+
+```{r}
+fviz_contrib(pca, choice = "var", axes = 2)
+
+```
+
+Contribución de cada instancia a la segunda componente
+
+```{r}
+fviz_contrib(pca, choice = "ind", axes = 2)
+
+```
+
+```{r}
+# Biplot: observations and variables in same graph (using first 2 components)
+biplot(pca)
+# not informative in this case: too many players
+
+# Nicer and using contributions (instead of loadings), without players:
+fviz_pca_var(pca, col.var = "contrib")
+
+```
+
+
+#### 6. Aplicar herramienta FA e interpretar
+
+```{r}
+
+fa <- factanal(sales, factors = 3, rotation="varimax", scores="regression", lower = 0.01)
+fa
+
+```
+
+```{r}
+cbind(fa$loadings, fa$uniquenesses)
+
+```
+ La variable que más alta correlación tiene con el factor 1 es *sqft_living*
+ 
+ El uniqueness no es tan pequeño
+
+
+
+```{r}
+par(mfrow=c(3,1))
+barplot(fa$loadings[,1], names=F, las=2, col="darkblue", ylim = c(-1, 1))
+barplot(fa$loadings[,2], names=F, las=2, col="darkblue", ylim = c(-1, 1))
+barplot(fa$loadings[,3], las=2, col="darkblue", ylim = c(-1, 1))
+
+```
+```{r}
+fa_2 <- factanal(sales, factors = 2, rotation="varimax", scores="regression", lower = 0.05)
+fa_2
+
+```
+```{r}
+
+cbind(fa_2$loadings, fa_2$uniquenesses)
+
+```
+```{r}
+par(mfrow=c(2,1))
+barplot(fa_2$loadings[,1], names=F, las=2, col="darkblue", ylim = c(-1, 1))
+barplot(fa_2$loadings[,2], las=2, col="darkblue", ylim = c(-1, 1))
+
+```
+
+
+
+
+## Conclusiones
+
+
+
+
+
+
+
+
+
